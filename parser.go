@@ -1,6 +1,9 @@
 package smtpsrv
 
 import (
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
+	"github.com/saintfish/chardet"
 	"bytes"
 	"encoding/base64"
 	"fmt"
@@ -10,6 +13,7 @@ import (
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -68,14 +72,61 @@ func ParseEmail(r io.Reader) (email *Email, err error) {
 	default:
 		email.Content, err = decodeContent(msg.Body, msg.Header.Get("Content-Transfer-Encoding"))
 	}
-
+	detector := chardet.NewTextDetector()
+	if email.TextBody != "" {
+		if email.OriginalCharset != ""{
+			email.TextBody, err = convertToUtf8String(email.TextBody, email.OriginalCharset)
+		}else{
+			result, errDet := detector.DetectBest([]byte(email.TextBody))
+			if errDet == nil{
+				email.TextBody, err = convertToUtf8String(email.TextBody, result.Charset)
+			}
+		}
+	}
+	if email.HTMLBody != "" {
+		if email.OriginalCharset != ""{
+			email.HTMLBody, err = convertToUtf8String(email.HTMLBody, email.OriginalCharset)
+		}else{
+			result, errDet := detector.DetectBest([]byte(email.HTMLBody))
+			if errDet == nil{
+				email.HTMLBody, err = convertToUtf8String(email.HTMLBody, result.Charset)
+			}
+		}
+	}
 	return
+}
+
+func convertToUtf8String(s string, charset string) (string, error) {
+	input := strings.NewReader(s)
+	output, err := convertToUtf8(input, charset)
+	if err != nil{
+		return "", err
+	}
+	outputBytes, err2 := ioutil.ReadAll(output)
+	return string(outputBytes), err2
+}
+
+func convertToUtf8(input io.Reader, charset string) (io.Reader, error) {
+	charset = strings.ToLower(charset)
+	if charset == `gb-18030` || charset == `gb18030` || charset == `gb2312` {
+		charset = `gbk`
+	}
+	e, err := ianaindex.MIME.Encoding(charset)
+	if err != nil{
+		return nil, err
+	}
+	return transform.NewReader(input, e.NewDecoder()), nil
 }
 
 func createEmailFromHeader(header mail.Header) (email *Email, err error) {
 	hp := headerParser{header: &header}
 
 	email = &Email{}
+	var reSubjectCharset = regexp.MustCompile(`(?m)=\?([a-zA-Z0-9-_]+)\?[bqBQ]\?`)
+	charsetMatch := reSubjectCharset.FindStringSubmatch(header.Get("Subject"))
+	if len(charsetMatch) == 2 {
+		email.OriginalCharset = charsetMatch[1]
+	}
 	email.Subject = decodeMimeSentence(header.Get("Subject"))
 	email.From = hp.parseAddressList(header.Get("From"))
 	email.Sender = hp.parseAddress(header.Get("Sender"))
@@ -313,6 +364,9 @@ func decodeMimeSentence(s string) string {
 
 	for _, word := range ss {
 		dec := new(mime.WordDecoder)
+		dec.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {
+			return convertToUtf8(input, charset)
+		}
 		w, err := dec.Decode(word)
 		if err != nil {
 			if len(result) == 0 {
@@ -534,4 +588,6 @@ type Email struct {
 
 	Attachments   []Attachment
 	EmbeddedFiles []EmbeddedFile
+
+	OriginalCharset string
 }
