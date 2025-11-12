@@ -1,9 +1,6 @@
 package smtpsrv
 
 import (
-	"golang.org/x/text/encoding/ianaindex"
-	"golang.org/x/text/transform"
-	"github.com/saintfish/chardet"
 	"bytes"
 	"encoding/base64"
 	"fmt"
@@ -16,6 +13,10 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/saintfish/chardet"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
 )
 
 const contentTypeMultipartMixed = "multipart/mixed"
@@ -74,21 +75,21 @@ func ParseEmail(r io.Reader) (email *Email, err error) {
 	}
 	detector := chardet.NewTextDetector()
 	if email.TextBody != "" {
-		if email.OriginalCharset != ""{
+		if email.OriginalCharset != "" {
 			email.TextBody, err = convertToUtf8String(email.TextBody, email.OriginalCharset)
-		}else{
+		} else {
 			result, errDet := detector.DetectBest([]byte(email.TextBody))
-			if errDet == nil{
+			if errDet == nil {
 				email.TextBody, err = convertToUtf8String(email.TextBody, result.Charset)
 			}
 		}
 	}
 	if email.HTMLBody != "" {
-		if email.OriginalCharset != ""{
+		if email.OriginalCharset != "" {
 			email.HTMLBody, err = convertToUtf8String(email.HTMLBody, email.OriginalCharset)
-		}else{
+		} else {
 			result, errDet := detector.DetectBest([]byte(email.HTMLBody))
-			if errDet == nil{
+			if errDet == nil {
 				email.HTMLBody, err = convertToUtf8String(email.HTMLBody, result.Charset)
 			}
 		}
@@ -99,7 +100,7 @@ func ParseEmail(r io.Reader) (email *Email, err error) {
 func convertToUtf8String(s string, charset string) (string, error) {
 	input := strings.NewReader(s)
 	output, err := convertToUtf8(input, charset)
-	if err != nil{
+	if err != nil {
 		return "", err
 	}
 	outputBytes, err2 := ioutil.ReadAll(output)
@@ -112,7 +113,7 @@ func convertToUtf8(input io.Reader, charset string) (io.Reader, error) {
 		charset = `gbk`
 	}
 	e, err := ianaindex.MIME.Encoding(charset)
-	if err != nil{
+	if err != nil {
 		return nil, err
 	}
 	return transform.NewReader(input, e.NewDecoder()), nil
@@ -435,32 +436,38 @@ func decodeAttachment(part *multipart.Part) (at Attachment, err error) {
 }
 
 func decodeContent(content io.Reader, encoding string) (io.Reader, error) {
-	switch encoding {
+	enc := strings.ToLower(strings.TrimSpace(encoding))
+
+	switch enc {
 	case "base64":
 		decoded := base64.NewDecoder(base64.StdEncoding, content)
 		b, err := ioutil.ReadAll(decoded)
 		if err != nil {
 			return nil, err
 		}
-
 		return bytes.NewReader(b), nil
-	case "7bit":
+
+	// 把 7bit / 8bit / binary 都当作直接透传读取（与原来的 7bit 行为一致）
+	case "7bit", "8bit", "binary":
 		dd, err := ioutil.ReadAll(content)
 		if err != nil {
 			return nil, err
 		}
-
 		return bytes.NewReader(dd), nil
-	case "quoted-printable":
+
+	// 接受带或不带连字符的 quoted-printable 形式
+	case "quoted-printable", "quotedprintable":
 		decoded := quotedprintable.NewReader(content)
 		b, err := ioutil.ReadAll(decoded)
 		if err != nil {
 			return nil, err
 		}
-
 		return bytes.NewReader(b), nil
+
+	// 空编码就直接返回原流
 	case "":
 		return content, nil
+
 	default:
 		return nil, fmt.Errorf("unknown encoding: %s", encoding)
 	}
