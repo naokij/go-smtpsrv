@@ -10,31 +10,44 @@ import (
 
 // A Session is returned after successful login.
 type Session struct {
-	connState *smtp.ConnectionState
-	From      *mail.Address
-	To        *mail.Address
-	handler   HandlerFunc
-	body      io.Reader
-	username  *string
-	password  *string
+	conn     *smtp.Conn
+	From     *mail.Address
+	To       *mail.Address
+	handler  HandlerFunc
+	body     io.Reader
+	auther   AuthFunc
+	username *string
+	password *string
 }
 
 // NewSession initialize a new session
-func NewSession(state *smtp.ConnectionState, handler HandlerFunc, username, password *string) *Session {
+func NewSession(conn *smtp.Conn, handler HandlerFunc, auther AuthFunc) *Session {
 	return &Session{
-		connState: state,
-		handler:   handler,
+		conn:    conn,
+		handler: handler,
+		auther:  auther,
 	}
 }
 
-func (s *Session) Mail(from string, opts smtp.MailOptions) (err error) {
+func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
+	var err error
 	s.From, err = mail.ParseAddress(from)
-	return
+
+	// Extract authentication information from MailOptions if available
+	if opts != nil && opts.Auth != nil {
+		// The Auth field contains the authorization identity
+		// For now, we store it as username (password would need to be handled via AuthSession)
+		authIdentity := *opts.Auth
+		s.username = &authIdentity
+	}
+
+	return err
 }
 
-func (s *Session) Rcpt(to string) (err error) {
+func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
+	var err error
 	s.To, err = mail.ParseAddress(to)
-	return
+	return err
 }
 
 func (s *Session) Data(r io.Reader) error {

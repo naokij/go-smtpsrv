@@ -15,7 +15,7 @@ type ServerConfig struct {
 	WriteTimeout    time.Duration
 	Handler         HandlerFunc
 	Auther          AuthFunc
-	MaxMessageBytes int
+	MaxMessageBytes int64
 	TLSConfig       *tls.Config
 }
 
@@ -30,7 +30,6 @@ func ListenAndServe(cfg *ServerConfig) error {
 	s.WriteTimeout = cfg.WriteTimeout
 	s.MaxMessageBytes = cfg.MaxMessageBytes
 	s.AllowInsecureAuth = true
-	s.AuthDisabled = true
 	s.EnableSMTPUTF8 = false
 
 	fmt.Println("⇨ smtp server started on", s.Addr)
@@ -49,7 +48,6 @@ func ListenAndServeTLS(cfg *ServerConfig) error {
 	s.WriteTimeout = cfg.WriteTimeout
 	s.MaxMessageBytes = cfg.MaxMessageBytes
 	s.AllowInsecureAuth = true
-	s.AuthDisabled = true
 	s.EnableSMTPUTF8 = false
 	s.EnableREQUIRETLS = true
 	s.TLSConfig = cfg.TLSConfig

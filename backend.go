@@ -1,8 +1,6 @@
 package smtpsrv
 
 import (
-	"errors"
-
 	"github.com/emersion/go-smtp"
 )
 
@@ -19,16 +17,10 @@ func NewBackend(auther AuthFunc, handler HandlerFunc) *Backend {
 	}
 }
 
-// Login handles a login command with username and password.
-func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	if nil == bkd.auther {
-		return nil, errors.New("invalid command specified")
-	}
-
-	return NewSession(state, bkd.handler, &username, &password), nil
-}
-
-// AnonymousLogin requires clients to authenticate using SMTP AUTH before sending emails
-func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
-	return NewSession(state, bkd.handler, nil, nil), nil
+// NewSession creates a new SMTP session from the connection.
+func (bkd *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
+	// Note: Authentication is now handled by the Conn/Session interface
+	// We create an anonymous session here. If authentication is required,
+	// it should be handled through the session's Auth method if needed.
+	return NewSession(c, bkd.handler, bkd.auther), nil
 }
